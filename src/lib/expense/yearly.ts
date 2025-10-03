@@ -219,25 +219,46 @@ export function renderYearlyExpensesTimeline(
   const tooltipContent = (allowedGroups: string[]) => {
     return (d: d3.SeriesPoint<Record<string, number>>) => {
       let grandTotal = 0;
-      return tooltip(
-        _.flatMap(allowedGroups, (key) => {
+
+      // Create array of entries with their values for sorting and truncation
+      const entries = _.chain(allowedGroups)
+        .map((key) => {
           const total = (d.data as any)[key];
           if (total > 0) {
             grandTotal += total;
-            return [
-              [
+            return {
+              key,
+              total,
+              row: [
                 iconify(key, { group: "Expenses" }),
                 [formatCurrency(total), "has-text-weight-bold has-text-right"]
               ]
-            ];
+            };
           }
-          return [];
-        }),
-        {
-          total: formatCurrency(grandTotal),
-          header: financialYear(d.data.timestamp as any)
-        }
-      );
+          return null;
+        })
+        .compact()
+        .orderBy(["total"], ["desc"])
+        .value();
+
+      // Limit entries to prevent tooltip overflow
+      const maxEntries = 15;
+      const shouldTruncate = entries.length > maxEntries;
+      const displayEntries = shouldTruncate ? entries.slice(0, maxEntries) : entries;
+
+      // Format tooltip rows
+      const tooltipRows = displayEntries.map((entry) => entry.row);
+
+      // Add truncation indicator if needed
+      if (shouldTruncate) {
+        const remainingCount = entries.length - maxEntries;
+        tooltipRows.push([`... and ${remainingCount} more entries`, ["", ""]]);
+      }
+
+      return tooltip(tooltipRows, {
+        total: formatCurrency(grandTotal),
+        header: financialYear(d.data.timestamp as any)
+      });
     };
   };
 
