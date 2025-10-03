@@ -20,6 +20,7 @@ import COLORS, { generateColorScheme, white } from "$lib/colors";
 import { get, type Readable, type Unsubscriber, type Writable } from "svelte/store";
 import { iconify } from "$lib/icon";
 import { byExpenseGroup, expenseGroup, pieData } from "$lib/expense";
+import { createTooltipContent } from "$lib/utils";
 
 export function renderCalendar(
   month: string,
@@ -230,6 +231,52 @@ export function renderMonthlyExpensesTimeline(
   const x = d3.scaleBand().range([0, width]).paddingInner(0.1).paddingOuter(0);
   const y = d3.scaleLinear().range([height, 0]);
 
+  /**
+   * Creates tooltip content for monthly expenses with aggregation by category.
+   */
+  const createExpenseTooltipContent = (
+    allPostings: Posting[],
+    allowedGroups: string[],
+    maxEntries: number = 15
+  ): string => {
+    // Filter postings based on condition
+    const filteredPostings = allPostings.filter((posting: Posting) => {
+      return posting.amount > 0 && allowedGroups.includes(expenseGroup(posting));
+    });
+
+    // Group by expense category and aggregate amounts
+    const groupedByCategory = _.chain(filteredPostings)
+      .groupBy(expenseGroup)
+      .mapValues((postings: Posting[]) => _.sumBy(postings, "amount"))
+      .toPairs()
+      .map(([category, total]) => ({ category, total }))
+      .orderBy(["total"], ["desc"])
+      .value();
+
+    const grandTotal = _.sumBy(groupedByCategory, "total");
+
+    // Limit entries to prevent tooltip overflow
+    const shouldTruncate = groupedByCategory.length > maxEntries;
+    const displayCategories = shouldTruncate
+      ? groupedByCategory.slice(0, maxEntries)
+      : groupedByCategory;
+
+    // Format tooltip rows
+    const tooltipRows = displayCategories.map((item) => [
+      iconify(item.category, { group: "Expenses" }),
+      [formatCurrency(item.total), "has-text-weight-bold has-text-right"]
+    ]);
+
+    // Add truncation indicator if needed
+    if (shouldTruncate) {
+      const remainingCount = groupedByCategory.length - maxEntries;
+      tooltipRows.push([`... and ${remainingCount} more categories`, ["", ""]]);
+    }
+
+    const header = filteredPostings.length > 0 ? filteredPostings[0].date.format("MMM YYYY") : "";
+    return tooltip(tooltipRows, { total: formatCurrency(grandTotal), header });
+  };
+
   const tooltipContent = (allowedGroups: string[]) => {
     return (d: d3.SeriesPoint<Record<string, number>>) => {
       let grandTotal = 0;
@@ -339,7 +386,10 @@ export function renderMonthlyExpensesTimeline(
       )
       .selectAll("rect")
       .data(
-        (d) => d,
+        (d) => {
+          const groupKey = d.key; // Capture the group key from the D3 stack
+          return d.map((point: any) => ({ ...point, groupKey }));
+        },
         (d: any) => d.data.timestamp.format("YYYY-MM")
       )
       .join(
@@ -351,7 +401,10 @@ export function renderMonthlyExpensesTimeline(
               const timestamp: Dayjs = data.data.timestamp as any;
               monthStore.set(timestamp.format("YYYY-MM"));
             })
-            .attr("data-tippy-content", tooltipContent(allowedGroups))
+            .attr("data-tippy-content", (d: any) => {
+              const monthPostings = ((d.data as any).postings || []) as Posting[];
+              return createExpenseTooltipContent(monthPostings, allowedGroups);
+            })
             .attr("x", function (d) {
               return (
                 x((d.data as any).month) +
@@ -369,7 +422,10 @@ export function renderMonthlyExpensesTimeline(
             }),
         (update) =>
           update
-            .attr("data-tippy-content", tooltipContent(allowedGroups))
+            .attr("data-tippy-content", (d: any) => {
+              const monthPostings = ((d.data as any).postings || []) as Posting[];
+              return createExpenseTooltipContent(monthPostings, allowedGroups);
+            })
             .transition(t)
             .attr("width", Math.min(x.bandwidth(), MAX_BAR_WIDTH))
             .attr("x", function (d) {

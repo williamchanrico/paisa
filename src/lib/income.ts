@@ -10,10 +10,70 @@ import {
   secondName,
   skipTicks,
   tooltip,
+  createTooltipContent,
   type IncomeYearlyCard,
   type Legend
 } from "./utils";
 import { generateColorScheme } from "./colors";
+
+/**
+ * Creates tooltip content for income chart segments with highlighting for hovered groups
+ */
+function createIncomeTooltipContent(allPostings: Posting[], isPositiveSegment: boolean): string {
+  return createTooltipContent(allPostings, {
+    getAmount: (posting: Posting) => -posting.amount,
+    getLabel: (posting: Posting) => restName(posting.account),
+    filterCondition: (posting: Posting) => {
+      return isPositiveSegment
+        ? -posting.amount > 0 // Income (positive when negated)
+        : -posting.amount < 0; // Expenses (negative when negated)
+    }
+  });
+}
+
+/**
+ * Creates tooltip content for yearly income timeline with highlighting for hovered groups
+ */
+function createYearlyTooltipContent(
+  allPostings: Posting[],
+  groups: string[],
+  maxEntries: number = 20
+): string {
+  // Group by income category
+  const groupedByCategory = _.groupBy(allPostings, incomeGroup);
+
+  // Aggregate amounts by category
+  const aggregatedCategories = Object.entries(groupedByCategory).map(([category, postings]) => ({
+    category: category || "Other",
+    amount: _.sumBy(postings, (posting) => -posting.amount)
+  }));
+
+  // Sort by amount (descending)
+  const sortedCategories = _.orderBy(aggregatedCategories, ["amount"], ["desc"]);
+
+  // Calculate total
+  const total = _.sumBy(aggregatedCategories, "amount");
+
+  // Limit entries to prevent tooltip overflow
+  const shouldTruncate = sortedCategories.length > maxEntries;
+  const displayCategories = shouldTruncate
+    ? sortedCategories.slice(0, maxEntries)
+    : sortedCategories;
+
+  // Format tooltip rows
+  const tooltipRows = displayCategories.map((item) => [
+    item.category,
+    [formatCurrency(item.amount), "has-text-weight-bold has-text-right"]
+  ]);
+
+  // Add truncation indicator if needed
+  if (shouldTruncate) {
+    const remainingCount = sortedCategories.length - maxEntries;
+    tooltipRows.push([`... and ${remainingCount} more categories`, ["", ""]]);
+  }
+
+  return tooltip(tooltipRows, { total: formatCurrency(total) });
+}
 
 export function renderMonthlyInvestmentTimeline(incomes: Income[]): Legend[] {
   return renderIncomeTimeline(incomes, "#d3-income-timeline", "MMM-YYYY");
@@ -138,19 +198,11 @@ function renderIncomeTimeline(incomes: Income[], id: string, timeFormat: string)
     })
     .enter()
     .append("rect")
-    .attr("data-tippy-content", (d) => {
-      const postings: Posting[] = (d.data as any).postings;
-      const total = _.sumBy(postings, (p) => -p.amount);
-      return tooltip(
-        _.sortBy(
-          postings.map((p) => [
-            restName(p.account),
-            [formatCurrency(-p.amount), "has-text-weight-bold has-text-right"]
-          ]),
-          (r) => r[0]
-        ),
-        { total: formatCurrency(total) }
-      );
+    .attr("data-tippy-content", function (d) {
+      const allPostings: Posting[] = (d.data as any).postings;
+      const isPositiveSegment = d[1] > d[0];
+
+      return createIncomeTooltipContent(allPostings, isPositiveSegment);
     })
     .attr("x", function (d) {
       return (
@@ -268,22 +320,10 @@ export function renderYearlyIncomeTimeline(yearlyCards: IncomeYearlyCard[]): Leg
     })
     .enter()
     .append("rect")
-    .attr("data-tippy-content", (d) => {
-      let grandTotal = 0;
-      return tooltip(
-        _.sortBy(
-          groups.flatMap((k) => {
-            const total = d.data[k];
-            if (total == 0) {
-              return [];
-            }
-            grandTotal += total;
-            return [[k, [formatCurrency(total), "has-text-weight-bold has-text-right"]]];
-          }),
-          (r) => r[0]
-        ),
-        { total: formatCurrency(grandTotal) }
-      );
+    .attr("data-tippy-content", function (d) {
+      const allPostings: Posting[] = (d.data as any).postings;
+
+      return createYearlyTooltipContent(allPostings, groups);
     })
     .attr("x", function (d) {
       return x(d[0]);

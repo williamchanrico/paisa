@@ -1125,6 +1125,47 @@ export function tooltip(
   return `<table class='table is-narrow is-size-7 popup-table'><tbody>${trs}</tbody></table>`;
 }
 
+/**
+ * Generic tooltip content creator.
+ * - Sorts items by amount (descending).
+ */
+export function createTooltipContent<T>(
+  items: T[],
+  options: {
+    getAmount: (item: T) => number;
+    getLabel: (item: T) => string;
+    filterCondition?: (item: T) => boolean;
+    maxEntries?: number;
+  }
+): string {
+  const { getAmount, getLabel, filterCondition = () => true, maxEntries = 15 } = options;
+
+  // Filter items based on condition
+  const filteredItems = items.filter(filterCondition);
+  const total = _.sumBy(filteredItems, getAmount);
+
+  // Sort by amount (descending)
+  const sortedItems = _.orderBy(filteredItems, [getAmount], ["desc"]);
+
+  // Limit entries to prevent tooltip overflow
+  const shouldTruncate = sortedItems.length > maxEntries;
+  const displayItems = shouldTruncate ? sortedItems.slice(0, maxEntries) : sortedItems;
+
+  // Format tooltip rows
+  const tooltipRows = displayItems.map((item) => [
+    getLabel(item),
+    [formatCurrency(getAmount(item)), "has-text-weight-bold has-text-right"]
+  ]);
+
+  // Add truncation indicator if needed
+  if (shouldTruncate) {
+    const remainingCount = filteredItems.length - maxEntries;
+    tooltipRows.push([`... and ${remainingCount} more entries`, ["", ""]]);
+  }
+
+  return tooltip(tooltipRows, { total: formatCurrency(total) });
+}
+
 export function isMobile() {
   return window.innerWidth < 769;
 }
