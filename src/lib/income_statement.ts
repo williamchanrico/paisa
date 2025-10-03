@@ -11,6 +11,14 @@ import COLORS from "./colors";
 import _ from "lodash";
 import { iconGlyph, iconify } from "./icon";
 import { pathArrows } from "d3-path-arrows";
+import dayjs from "dayjs";
+
+interface RenderContext {
+  isMonthlyView?: boolean;
+  selectedMonths?: string[];
+  monthlyData?: Record<string, Record<string, IncomeStatement>>;
+  year?: string;
+}
 
 export function renderIncomeStatement(element: Element) {
   const BARS = 4;
@@ -26,7 +34,10 @@ export function renderIncomeStatement(element: Element) {
     .attr("height", height + margin.top + margin.bottom)
     .attr("width", width + margin.left + margin.right);
 
-  const sum = (object: Record<string, number>) => Object.values(object).reduce((a, b) => a + b, 0);
+  const sum = (object: Record<string, number> | null | undefined) => {
+    if (!object || typeof object !== "object") return 0;
+    return Object.values(object).reduce((a, b) => a + b, 0);
+  };
   const y = d3.scaleBand().range([height, 0]).paddingInner(0.4).paddingOuter(0.6);
   const x = d3.scaleLinear().range([0, width]);
 
@@ -71,7 +82,7 @@ export function renderIncomeStatement(element: Element) {
     });
 
   let firstRender = true;
-  return function (statement: IncomeStatement) {
+  return function (statement: IncomeStatement, context?: RenderContext) {
     const incomeStart = statement.startingBalance;
     const income = sum(statement.income) * -1;
     const taxStart = incomeStart + income;
@@ -211,38 +222,81 @@ export function renderIncomeStatement(element: Element) {
       .attr("fill", (d) => d.color)
       .attr("fill-opacity", 0.5)
       .attr("data-tippy-content", (d) => {
-        const secondLevelBreakdown = _.chain(d.breakdown)
-          .toPairs()
-          .groupBy((pair) => firstNames(pair[0], 2))
-          .map((pairs, label) => [label, _.sumBy(pairs, (pair) => pair[1])])
-          .fromPairs()
-          .value();
+        // Check if we're in monthly view with multiple selected months
+        if (
+          context?.isMonthlyView &&
+          context?.selectedMonths &&
+          context?.selectedMonths.length > 1 &&
+          context?.monthlyData &&
+          context?.year
+        ) {
+          // Show monthly breakdown for each selected month
+          const monthlyBreakdown: Array<{ month: string; value: number }> = [];
 
-        // Convert to array and sort by value (descending)
-        const sortedEntries = _.chain(secondLevelBreakdown)
-          .toPairs()
-          .map(([label, value]) => ({ label, value }))
-          .orderBy(["value"], ["desc"])
-          .value();
+          for (const month of context.selectedMonths.sort()) {
+            const monthKey = `${context.year}-${month}`;
+            const monthData = context.monthlyData[context.year]?.[monthKey];
+            if (monthData) {
+              const propertyData = monthData[
+                d.label.toLowerCase() as keyof IncomeStatement
+              ] as Record<string, number>;
+              const monthValue = sum(propertyData) * d.multiplier;
+              monthlyBreakdown.push({ month, value: monthValue });
+            }
+          }
 
-        // Limit entries to prevent tooltip overflow
-        const maxEntries = 15;
-        const shouldTruncate = sortedEntries.length > maxEntries;
-        const displayEntries = shouldTruncate ? sortedEntries.slice(0, maxEntries) : sortedEntries;
+          // Format tooltip rows for monthly breakdown
+          const tooltipRows = monthlyBreakdown.map((entry) => [
+            dayjs(`${context.year}-${entry.month}-01`).format("MMM"),
+            [formatCurrency(entry.value), "has-text-right has-text-weight-bold"]
+          ]);
 
-        // Format tooltip rows
-        const tooltipRows = displayEntries.map((entry) => [
-          iconify(entry.label),
-          [formatCurrency(entry.value * d.multiplier), "has-text-right has-text-weight-bold"]
-        ]);
+          const headerText =
+            context.selectedMonths.length > 1
+              ? `${d.label} (${context.selectedMonths.length} months aggregated)`
+              : `${d.label}`;
 
-        // Add truncation indicator if needed
-        if (shouldTruncate) {
-          const remainingCount = sortedEntries.length - maxEntries;
-          tooltipRows.push([`... and ${remainingCount} more entries`, ["", ""]]);
+          return tooltip(tooltipRows, {
+            header: headerText,
+            total: formatCurrency(d.value)
+          });
+        } else {
+          // Original logic for yearly view or single month
+          const secondLevelBreakdown = _.chain(d.breakdown)
+            .toPairs()
+            .groupBy((pair) => firstNames(pair[0], 2))
+            .map((pairs, label) => [label, _.sumBy(pairs, (pair) => pair[1])])
+            .fromPairs()
+            .value();
+
+          // Convert to array and sort by value (descending)
+          const sortedEntries = _.chain(secondLevelBreakdown)
+            .toPairs()
+            .map(([label, value]) => ({ label, value }))
+            .orderBy(["value"], ["desc"])
+            .value();
+
+          // Limit entries to prevent tooltip overflow
+          const maxEntries = 15;
+          const shouldTruncate = sortedEntries.length > maxEntries;
+          const displayEntries = shouldTruncate
+            ? sortedEntries.slice(0, maxEntries)
+            : sortedEntries;
+
+          // Format tooltip rows
+          const tooltipRows = displayEntries.map((entry) => [
+            iconify(entry.label),
+            [formatCurrency(entry.value * d.multiplier), "has-text-right has-text-weight-bold"]
+          ]);
+
+          // Add truncation indicator if needed
+          if (shouldTruncate) {
+            const remainingCount = sortedEntries.length - maxEntries;
+            tooltipRows.push([`... and ${remainingCount} more entries`, ["", ""]]);
+          }
+
+          return tooltip(tooltipRows, { header: `${d.label}`, total: formatCurrency(d.value) });
         }
-
-        return tooltip(tooltipRows, { header: `${d.label}`, total: formatCurrency(d.value) });
       })
       .transition(t)
       .attr("x", function (d) {

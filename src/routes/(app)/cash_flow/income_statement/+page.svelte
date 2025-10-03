@@ -150,7 +150,12 @@
       diff = incomeStatement.endingBalance - incomeStatement.startingBalance;
       diffPercent = diff / incomeStatement.startingBalance;
 
-      renderer(incomeStatement);
+      renderer(incomeStatement, {
+        isMonthlyView,
+        selectedMonths: $selectedMonths,
+        monthlyData: monthly,
+        year: $year
+      });
       isEmpty = false;
     } else {
       incomeStatement = null;
