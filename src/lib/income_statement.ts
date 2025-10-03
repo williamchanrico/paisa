@@ -218,13 +218,31 @@ export function renderIncomeStatement(element: Element) {
           .fromPairs()
           .value();
 
-        return tooltip(
-          _.map(secondLevelBreakdown, (value, label) => [
-            iconify(label),
-            [formatCurrency(value * d.multiplier), "has-text-right has-text-weight-bold"]
-          ]),
-          { header: d.label, total: formatCurrency(d.value) }
-        );
+        // Convert to array and sort by value (descending)
+        const sortedEntries = _.chain(secondLevelBreakdown)
+          .toPairs()
+          .map(([label, value]) => ({ label, value }))
+          .orderBy(["value"], ["desc"])
+          .value();
+
+        // Limit entries to prevent tooltip overflow
+        const maxEntries = 15;
+        const shouldTruncate = sortedEntries.length > maxEntries;
+        const displayEntries = shouldTruncate ? sortedEntries.slice(0, maxEntries) : sortedEntries;
+
+        // Format tooltip rows
+        const tooltipRows = displayEntries.map((entry) => [
+          iconify(entry.label),
+          [formatCurrency(entry.value * d.multiplier), "has-text-right has-text-weight-bold"]
+        ]);
+
+        // Add truncation indicator if needed
+        if (shouldTruncate) {
+          const remainingCount = sortedEntries.length - maxEntries;
+          tooltipRows.push([`... and ${remainingCount} more entries`, ["", ""]]);
+        }
+
+        return tooltip(tooltipRows, { header: `${d.label}`, total: formatCurrency(d.value) });
       })
       .transition(t)
       .attr("x", function (d) {
