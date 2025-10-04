@@ -10,6 +10,10 @@
     renderDailyInvestmentTimeline,
     renderMonthlyNetIncomeTimeline,
     renderDailyNetIncomeTimeline,
+    renderMonthlyInvestmentTimelineWithFilter,
+    renderDailyInvestmentTimelineWithFilter,
+    renderMonthlyNetIncomeTimelineWithFilter,
+    renderDailyNetIncomeTimelineWithFilter,
     renderYearlyIncomeTimeline,
     renderYearlyTimelineOf
   } from "$lib/income";
@@ -49,8 +53,9 @@
   let yearlyNetIncomeTimelineLegends: Legend[] = [];
   let yearlyNetTaxTimelineLegends: Legend[] = [];
 
-  // TBD: Future Gross/Net toggle state
-  // let incomeDisplayMode: "gross" | "net" = "gross";
+  // State for legend filtering
+  let selectedGroups: string[] = [];
+  let useFiltering = true;
 
   onMount(async () => {
     const {
@@ -84,6 +89,11 @@
     );
   });
 
+  // Function to handle filter changes
+  function handleFilterChange(newSelectedGroups: string[]) {
+    selectedGroups = newSelectedGroups;
+  }
+
   // Reactive statement to update timeline chart when mode, date, or display mode changes
   $: if (incomeData.length > 0) {
     // Clear the SVG before re-rendering to fix update issues
@@ -92,30 +102,66 @@
       svg.innerHTML = "";
     }
 
-    if (incomeDisplayMode === "gross") {
-      // Gross income mode (existing behavior)
-      if (timelineMode === "monthly") {
-        monthlyInvestmentTimelineLegends = renderMonthlyInvestmentTimeline(incomeData);
+    if (useFiltering) {
+      // Use filtering functions
+      if (incomeDisplayMode === "gross") {
+        if (timelineMode === "monthly") {
+          monthlyInvestmentTimelineLegends = renderMonthlyInvestmentTimelineWithFilter(
+            incomeData,
+            handleFilterChange
+          );
+        } else {
+          const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
+          monthlyInvestmentTimelineLegends = renderDailyInvestmentTimelineWithFilter(
+            incomeData,
+            selectedDate.year(),
+            selectedDate.month() + 1,
+            handleFilterChange
+          );
+        }
       } else {
-        const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
-        monthlyInvestmentTimelineLegends = renderDailyInvestmentTimeline(
-          incomeData,
-          selectedDate.year(),
-          selectedDate.month() + 1
-        );
+        if (timelineMode === "monthly") {
+          monthlyInvestmentTimelineLegends = renderMonthlyNetIncomeTimelineWithFilter(
+            incomeData,
+            taxData,
+            handleFilterChange
+          );
+        } else {
+          const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
+          monthlyInvestmentTimelineLegends = renderDailyNetIncomeTimelineWithFilter(
+            incomeData,
+            taxData,
+            selectedDate.year(),
+            selectedDate.month() + 1,
+            handleFilterChange
+          );
+        }
       }
     } else {
-      // Net income mode (income - tax)
-      if (timelineMode === "monthly") {
-        monthlyInvestmentTimelineLegends = renderMonthlyNetIncomeTimeline(incomeData, taxData);
+      // Use original functions (non-filtering)
+      if (incomeDisplayMode === "gross") {
+        if (timelineMode === "monthly") {
+          monthlyInvestmentTimelineLegends = renderMonthlyInvestmentTimeline(incomeData);
+        } else {
+          const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
+          monthlyInvestmentTimelineLegends = renderDailyInvestmentTimeline(
+            incomeData,
+            selectedDate.year(),
+            selectedDate.month() + 1
+          );
+        }
       } else {
-        const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
-        monthlyInvestmentTimelineLegends = renderDailyNetIncomeTimeline(
-          incomeData,
-          taxData,
-          selectedDate.year(),
-          selectedDate.month() + 1
-        );
+        if (timelineMode === "monthly") {
+          monthlyInvestmentTimelineLegends = renderMonthlyNetIncomeTimeline(incomeData, taxData);
+        } else {
+          const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
+          monthlyInvestmentTimelineLegends = renderDailyNetIncomeTimeline(
+            incomeData,
+            taxData,
+            selectedDate.year(),
+            selectedDate.month() + 1
+          );
+        }
       }
     }
   }
@@ -159,7 +205,10 @@
             </div>
           </div>
 
-          <LegendCard legends={monthlyInvestmentTimelineLegends} clazz="ml-4" />
+          <LegendCard
+            legends={monthlyInvestmentTimelineLegends}
+            clazz="flex justify-start gap-0 ml-4 overflow-x-auto"
+          />
           <svg id="d3-income-timeline" width="100%" height="500" />
         </div>
       </div>
