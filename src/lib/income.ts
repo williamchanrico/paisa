@@ -148,6 +148,37 @@ export function renderDailyInvestmentTimeline(
   return renderIncomeTimeline(dailyIncomes, "#d3-income-timeline", "DD-MMM");
 }
 
+// New functions with filtering support
+export function renderMonthlyInvestmentTimelineWithFilter(
+  incomes: Income[],
+  onFilterChange: (selectedGroups: string[]) => void
+): Legend[] {
+  return renderIncomeTimelineWithFilter(
+    incomes,
+    "#d3-income-timeline",
+    "MMM-YYYY",
+    false,
+    onFilterChange
+  );
+}
+
+export function renderDailyInvestmentTimelineWithFilter(
+  incomes: Income[],
+  year: number,
+  month: number,
+  onFilterChange: (selectedGroups: string[]) => void
+): Legend[] {
+  // Transform monthly data to daily data for the specified month
+  const dailyIncomes = transformToDailyData(incomes, year, month);
+  return renderIncomeTimelineWithFilter(
+    dailyIncomes,
+    "#d3-income-timeline",
+    "DD-MMM",
+    false,
+    onFilterChange
+  );
+}
+
 export function renderMonthlyNetIncomeTimeline(incomes: Income[], taxes: any[]): Legend[] {
   const netIncomes = calculateNetIncomeMonthly(incomes, taxes);
   return renderIncomeTimeline(netIncomes, "#d3-income-timeline", "MMM-YYYY", true);
@@ -161,6 +192,38 @@ export function renderDailyNetIncomeTimeline(
 ): Legend[] {
   const netIncomes = calculateNetIncomeDaily(incomes, taxes, year, month);
   return renderIncomeTimeline(netIncomes, "#d3-income-timeline", "DD-MMM", true);
+}
+
+export function renderMonthlyNetIncomeTimelineWithFilter(
+  incomes: Income[],
+  taxes: any[],
+  onFilterChange: (selectedGroups: string[]) => void
+): Legend[] {
+  const netIncomes = calculateNetIncomeMonthly(incomes, taxes);
+  return renderIncomeTimelineWithFilter(
+    netIncomes,
+    "#d3-income-timeline",
+    "MMM-YYYY",
+    true,
+    onFilterChange
+  );
+}
+
+export function renderDailyNetIncomeTimelineWithFilter(
+  incomes: Income[],
+  taxes: any[],
+  year: number,
+  month: number,
+  onFilterChange: (selectedGroups: string[]) => void
+): Legend[] {
+  const netIncomes = calculateNetIncomeDaily(incomes, taxes, year, month);
+  return renderIncomeTimelineWithFilter(
+    netIncomes,
+    "#d3-income-timeline",
+    "DD-MMM",
+    true,
+    onFilterChange
+  );
 }
 
 function transformToDailyData(incomes: Income[], year: number, month: number): Income[] {
@@ -313,6 +376,233 @@ function calculateNetIncomeDaily(
       postings: [netPosting]
     };
   });
+}
+
+function renderIncomeTimelineWithFilter(
+  incomes: Income[],
+  id: string,
+  timeFormat: string,
+  isNetIncome: boolean = false,
+  onFilterChange: (selectedGroups: string[]) => void
+): Legend[] {
+  const MAX_BAR_WIDTH = 40;
+  const svg = d3.select(id),
+    margin = { top: 20, right: 30, bottom: 80, left: 40 },
+    width =
+      document.getElementById(id.substring(1)).parentElement.clientWidth -
+      margin.left -
+      margin.right,
+    height = +svg.attr("height") - margin.top - margin.bottom,
+    g = svg.append("g").attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+  const postings = _.flatMap(incomes, (i) => i.postings);
+  const groupKeys = _.chain(postings)
+    .map((p) => incomeGroup(p))
+    .uniq()
+    .sort()
+    .value();
+
+  const groupTotal = _.chain(postings)
+    .groupBy((p) => incomeGroup(p))
+    .map((postings, key) => {
+      const total = _.sumBy(postings, (p) => -p.amount);
+      return [key, `${key}\n${formatCurrency(total)}`];
+    })
+    .fromPairs()
+    .value();
+
+  const defaultValues = _.zipObject(
+    groupKeys,
+    _.map(groupKeys, () => 0)
+  );
+
+  interface Point {
+    date: dayjs.Dayjs;
+    month: string;
+    [key: string]: number | string | dayjs.Dayjs;
+  }
+  let points: Point[] = [];
+
+  points = _.map(incomes, (i) => {
+    const values = _.chain(i.postings)
+      .groupBy((p) => incomeGroup(p))
+      .flatMap((postings, key) => [[key, _.sumBy(postings, (p) => -p.amount)]])
+      .fromPairs()
+      .value();
+
+    return _.merge(
+      {
+        month: i.date.format(timeFormat),
+        date: i.date,
+        postings: i.postings
+      },
+      defaultValues,
+      values
+    );
+  });
+
+  const x = d3.scaleBand().range([0, width]).paddingInner(0.1).paddingOuter(0);
+  const y = d3.scaleLinear().range([height, 0]);
+  const z = generateColorScheme(groupKeys);
+
+  const sum = (filter: (n: number) => boolean) => (p: Point) =>
+    _.sum(
+      _.filter(
+        _.map(groupKeys, (k) => p[k]),
+        filter
+      )
+    );
+
+  const xAxis = g.append("g").attr("class", "axis x");
+  const yAxis = g.append("g").attr("class", "axis y");
+  const bars = g.append("g");
+
+  const render = (allowedGroups: string[]) => {
+    const filteredPoints = points.map((point) => {
+      const filteredPoint = { ...point };
+      // Zero out values for non-allowed groups
+      groupKeys.forEach((key) => {
+        if (!allowedGroups.includes(key)) {
+          filteredPoint[key] = 0;
+        }
+      });
+      return filteredPoint;
+    });
+
+    x.domain(filteredPoints.map((p) => p.month));
+    y.domain([
+      d3.min(
+        filteredPoints,
+        sum((a) => a < 0)
+      ),
+      d3.max(
+        filteredPoints,
+        sum((a) => a > 0)
+      )
+    ]);
+
+    const t = svg.transition().duration(750);
+
+    xAxis
+      .attr("transform", "translate(0," + height + ")")
+      .transition(t)
+      .call(
+        d3
+          .axisBottom(x)
+          .ticks(5)
+          .tickFormat(skipTicks(30, x, (d) => d.toString()))
+      )
+      .selectAll("text")
+      .attr("y", 10)
+      .attr("x", -8)
+      .attr("dy", ".35em")
+      .attr("transform", "rotate(-45)")
+      .style("text-anchor", "end");
+
+    yAxis.transition(t).call(d3.axisLeft(y).tickSize(-width).tickFormat(formatCurrencyCrude));
+
+    bars
+      .selectAll("g")
+      .data(
+        d3.stack().offset(d3.stackOffsetDiverging).keys(allowedGroups)(
+          filteredPoints as { [key: string]: number }[]
+        ),
+        (d: any) => d.key
+      )
+      .join(
+        (enter) =>
+          enter.append("g").attr("fill", function (d) {
+            return z(d.key.split("-")[0]);
+          }),
+        (update) => update.transition(t),
+        (exit) =>
+          exit.selectAll("rect").transition(t).attr("y", y.range()[0]).attr("height", 0).remove()
+      )
+      .selectAll("rect")
+      .data(function (d) {
+        return d;
+      })
+      .join(
+        (enter) =>
+          enter
+            .append("rect")
+            .attr("data-tippy-content", function (d) {
+              const allPostings: Posting[] = (d.data as any).postings;
+              const date = (d.data as any).date;
+
+              if (isNetIncome) {
+                return createNetIncomeTooltipContent(allPostings, date, timeFormat);
+              } else {
+                const isPositiveSegment = d[1] > d[0];
+                return createIncomeTooltipContent(allPostings, isPositiveSegment, date, timeFormat);
+              }
+            })
+            .attr("x", function (d) {
+              return (
+                x((d.data as any).month) +
+                (x.bandwidth() - Math.min(x.bandwidth(), MAX_BAR_WIDTH)) / 2
+              );
+            })
+            .attr("y", function (d) {
+              return y(d[1]);
+            })
+            .attr("height", function (d) {
+              return y(d[0]) - y(d[1]);
+            })
+            .attr("width", Math.min(x.bandwidth(), MAX_BAR_WIDTH)),
+        (update) =>
+          update
+            .attr("data-tippy-content", function (d) {
+              const allPostings: Posting[] = (d.data as any).postings;
+              const date = (d.data as any).date;
+
+              if (isNetIncome) {
+                return createNetIncomeTooltipContent(allPostings, date, timeFormat);
+              } else {
+                const isPositiveSegment = d[1] > d[0];
+                return createIncomeTooltipContent(allPostings, isPositiveSegment, date, timeFormat);
+              }
+            })
+            .transition(t)
+            .attr("x", function (d) {
+              return (
+                x((d.data as any).month) +
+                (x.bandwidth() - Math.min(x.bandwidth(), MAX_BAR_WIDTH)) / 2
+              );
+            })
+            .attr("y", function (d) {
+              return y(d[1]);
+            })
+            .attr("height", function (d) {
+              return y(d[0]) - y(d[1]);
+            })
+            .attr("width", Math.min(x.bandwidth(), MAX_BAR_WIDTH)),
+        (exit) => exit.remove()
+      );
+  };
+
+  let selectedGroups = groupKeys;
+  render(selectedGroups);
+
+  const legends = groupKeys.map(
+    (group) =>
+      ({
+        label: groupTotal[group],
+        color: z(group),
+        shape: "square",
+        onClick: () => {
+          if (selectedGroups.length == 1 && selectedGroups[0] == group) {
+            selectedGroups = groupKeys;
+          } else {
+            selectedGroups = [group];
+          }
+          render(selectedGroups);
+          onFilterChange(selectedGroups);
+        }
+      }) as Legend
+  );
+
+  return legends;
 }
 
 function renderIncomeTimeline(
