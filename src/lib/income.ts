@@ -1,5 +1,5 @@
 import * as d3 from "d3";
-import type dayjs from "dayjs";
+import dayjs, { type Dayjs } from "dayjs";
 import _ from "lodash";
 import {
   formatCurrency,
@@ -77,6 +77,54 @@ function createYearlyTooltipContent(
 
 export function renderMonthlyInvestmentTimeline(incomes: Income[]): Legend[] {
   return renderIncomeTimeline(incomes, "#d3-income-timeline", "MMM-YYYY");
+}
+
+export function renderDailyInvestmentTimeline(
+  incomes: Income[],
+  year: number,
+  month: number
+): Legend[] {
+  // Transform monthly data to daily data for the specified month
+  const dailyIncomes = transformToDailyData(incomes, year, month);
+  return renderIncomeTimeline(dailyIncomes, "#d3-income-timeline", "DD-MMM");
+}
+
+function transformToDailyData(incomes: Income[], year: number, month: number): Income[] {
+  const targetDate = dayjs()
+    .year(year)
+    .month(month - 1); // dayjs months are 0-indexed
+  const startOfMonth = targetDate.startOf("month");
+  const endOfMonth = targetDate.endOf("month");
+  const daysInMonth = endOfMonth.date();
+
+  // Find all postings for the target month
+  const monthlyPostings = _.flatMap(incomes, (income) => {
+    const incomeDate = dayjs(income.date);
+    if (incomeDate.year() === year && incomeDate.month() === month - 1) {
+      return income.postings.map((posting) => ({
+        ...posting,
+        date: dayjs(posting.date)
+      }));
+    }
+    return [];
+  });
+
+  // Group postings by day
+  const postingsByDay = _.groupBy(monthlyPostings, (posting) => dayjs(posting.date).date());
+
+  // Create daily income objects for each day of the month
+  const dailyIncomes: Income[] = [];
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dayDate = startOfMonth.date(day);
+    const dayPostings = postingsByDay[day] || [];
+
+    dailyIncomes.push({
+      date: dayDate,
+      postings: dayPostings
+    });
+  }
+
+  return dailyIncomes;
 }
 
 function renderIncomeTimeline(incomes: Income[], id: string, timeFormat: string): Legend[] {

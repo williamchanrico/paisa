@@ -3,22 +3,44 @@
   import BoxLabel from "$lib/components/BoxLabel.svelte";
   import LegendCard from "$lib/components/LegendCard.svelte";
   import LevelItem from "$lib/components/LevelItem.svelte";
+  import BoxedTabs from "$lib/components/BoxedTabs.svelte";
+  import MonthPicker from "$lib/components/MonthPicker.svelte";
   import {
     renderMonthlyInvestmentTimeline,
+    renderDailyInvestmentTimeline,
     renderYearlyIncomeTimeline,
     renderYearlyTimelineOf
   } from "$lib/income";
-  import { ajax, formatCurrency, type Legend } from "$lib/utils";
+  import { ajax, formatCurrency, type Legend, type Income } from "$lib/utils";
   import _ from "lodash";
   import { onMount } from "svelte";
+  import dayjs from "dayjs";
 
   let grossIncome = 0;
   let netTax = 0;
+
+  // Timeline state
+  let timelineMode: "daily" | "monthly" = "monthly";
+  let selectedMonthValue = dayjs().format("YYYY-MM"); // Format for MonthPicker
+
+  // Options for BoxedTabs
+  const timelineOptions = [
+    { label: "Daily", value: "daily" },
+    { label: "Monthly", value: "monthly" }
+  ];
+
+  // Data storage
+  let incomeData: Income[] = [];
+  let taxData: any[] = [];
+  let yearlyCardsData: any[] = [];
 
   let monthlyInvestmentTimelineLegends: Legend[] = [];
   let yearlyIncomeTimelineLegends: Legend[] = [];
   let yearlyNetIncomeTimelineLegends: Legend[] = [];
   let yearlyNetTaxTimelineLegends: Legend[] = [];
+
+  // TBD: Future Gross/Net toggle state
+  // let incomeDisplayMode: "gross" | "net" = "gross";
 
   onMount(async () => {
     const {
@@ -26,7 +48,17 @@
       tax_timeline: taxes,
       yearly_cards: yearlyCards
     } = await ajax("/api/income");
-    monthlyInvestmentTimelineLegends = renderMonthlyInvestmentTimeline(incomes);
+
+    // Store data for reactive updates
+    incomeData = incomes;
+    taxData = taxes;
+    yearlyCardsData = yearlyCards;
+
+    // Calculate summary values
+    grossIncome = _.sumBy(incomes, (i) => _.sumBy(i.postings, (p) => -p.amount));
+    netTax = _.sumBy(taxes, (t) => _.sumBy(t.postings, (p) => p.amount));
+
+    // Render yearly charts (these don't change with timeline mode)
     yearlyIncomeTimelineLegends = renderYearlyIncomeTimeline(yearlyCards);
     yearlyNetIncomeTimelineLegends = renderYearlyTimelineOf(
       "Net Income",
@@ -40,10 +72,32 @@
       COLORS.loss,
       yearlyCards
     );
-
-    grossIncome = _.sumBy(incomes, (i) => _.sumBy(i.postings, (p) => -p.amount));
-    netTax = _.sumBy(taxes, (t) => _.sumBy(t.postings, (p) => p.amount));
   });
+
+  // Reactive statement to update timeline chart when mode or date changes
+  $: if (incomeData.length > 0) {
+    // Clear the SVG before re-rendering to fix update issues
+    const svg = document.getElementById("d3-income-timeline");
+    if (svg) {
+      svg.innerHTML = "";
+    }
+
+    if (timelineMode === "monthly") {
+      monthlyInvestmentTimelineLegends = renderMonthlyInvestmentTimeline(incomeData);
+    } else {
+      const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
+      monthlyInvestmentTimelineLegends = renderDailyInvestmentTimeline(
+        incomeData,
+        selectedDate.year(),
+        selectedDate.month() + 1
+      );
+    }
+  }
+
+  // Get min/max dates for MonthPicker
+  $: minDate =
+    incomeData.length > 0 ? dayjs(_.minBy(incomeData, "date")?.date) : dayjs().subtract(5, "years");
+  $: maxDate = dayjs();
 </script>
 
 <section class="section tab-income">
@@ -59,12 +113,32 @@
     <div class="columns">
       <div class="column is-12">
         <div class="box">
+          <!-- Action buttons section -->
+          <div class="action-buttons mb-4">
+            <div class="is-flex is-align-items-center is-justify-content-flex-end pr-3">
+              <!-- Month picker (only visible in daily mode) -->
+              {#if timelineMode === "daily"}
+                <MonthPicker bind:value={selectedMonthValue} min={minDate} max={maxDate} />
+              {/if}
+
+              <!-- Timeline toggle -->
+              <div class="ml-3">
+                <BoxedTabs bind:value={timelineMode} options={timelineOptions} />
+              </div>
+
+              <!-- TBD: Future Gross/Net toggle will go here -->
+              <!-- <div class="ml-3">
+                 <GrossNetToggle bind:selectedMode={incomeDisplayMode} />
+               </div> -->
+            </div>
+          </div>
+
           <LegendCard legends={monthlyInvestmentTimelineLegends} clazz="ml-4" />
           <svg id="d3-income-timeline" width="100%" height="500" />
         </div>
       </div>
     </div>
-    <BoxLabel text="Monthly Income Timeline" />
+    <BoxLabel text="{timelineMode === 'daily' ? 'Daily' : 'Monthly'} Income Timeline" />
   </div>
 </section>
 <section class="section">
@@ -92,3 +166,15 @@
     <BoxLabel text="Financial Year Income Timeline" />
   </div>
 </section>
+
+<style>
+  .action-buttons {
+    border-bottom: 1px solid #e0e0e0;
+    padding-bottom: 1rem;
+  }
+
+  /* Dark theme support */
+  :global(html[data-theme="dark"]) .action-buttons {
+    border-bottom-color: #5a5a5a;
+  }
+</style>
