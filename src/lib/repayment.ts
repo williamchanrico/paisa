@@ -49,6 +49,7 @@ export function renderMonthlyRepaymentTimelineWithFilter(
 
   interface Point {
     month: string;
+    date: dayjs.Dayjs;
     [key: string]: number | string | dayjs.Dayjs;
   }
   const points: Point[] = [];
@@ -65,6 +66,7 @@ export function renderMonthlyRepaymentTimelineWithFilter(
       _.merge(
         {
           month: month.format(timeFormat),
+          date: month,
           postings: postings
         },
         defaultValues,
@@ -143,6 +145,7 @@ export function renderMonthlyRepaymentTimelineWithFilter(
             .append("rect")
             .attr("data-tippy-content", (d) => {
               const postings: Posting[] = (d.data as any).postings;
+              const date = (d.data as any).date;
               const filteredPostings = postings.filter((p) =>
                 allowedGroups.includes(restName(p.account))
               );
@@ -155,7 +158,10 @@ export function renderMonthlyRepaymentTimelineWithFilter(
                   ]),
                   (r) => r[0]
                 ),
-                { total: formatCurrency(total) }
+                {
+                  total: formatCurrency(total),
+                  header: date.format("MMM YYYY")
+                }
               );
             })
             .attr("x", function (d) {
@@ -175,6 +181,7 @@ export function renderMonthlyRepaymentTimelineWithFilter(
           update
             .attr("data-tippy-content", (d) => {
               const postings: Posting[] = (d.data as any).postings;
+              const date = (d.data as any).date;
               const filteredPostings = postings.filter((p) =>
                 allowedGroups.includes(restName(p.account))
               );
@@ -187,7 +194,10 @@ export function renderMonthlyRepaymentTimelineWithFilter(
                   ]),
                   (r) => r[0]
                 ),
-                { total: formatCurrency(total) }
+                {
+                  total: formatCurrency(total),
+                  header: date.format("MMM YYYY")
+                }
               );
             })
             .transition(t)
@@ -262,6 +272,7 @@ export function renderMonthlyRepaymentTimeline(postings: Posting[]): Legend[] {
 
   interface Point {
     month: string;
+    date: dayjs.Dayjs;
     [key: string]: number | string | dayjs.Dayjs;
   }
   const points: Point[] = [];
@@ -278,6 +289,7 @@ export function renderMonthlyRepaymentTimeline(postings: Posting[]): Legend[] {
       _.merge(
         {
           month: month.format(timeFormat),
+          date: month,
           postings: postings
         },
         defaultValues,
@@ -332,6 +344,7 @@ export function renderMonthlyRepaymentTimeline(postings: Posting[]): Legend[] {
     .append("rect")
     .attr("data-tippy-content", (d) => {
       const postings: Posting[] = (d.data as any).postings;
+      const date = (d.data as any).date;
       const total = _.sumBy(postings, (p) => p.amount);
       return tooltip(
         _.sortBy(
@@ -341,7 +354,10 @@ export function renderMonthlyRepaymentTimeline(postings: Posting[]): Legend[] {
           ]),
           (r) => r[0]
         ),
-        { total: formatCurrency(total) }
+        {
+          total: formatCurrency(total),
+          header: date.format("MMM YYYY")
+        }
       );
     })
     .attr("x", function (d) {
