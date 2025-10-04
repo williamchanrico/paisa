@@ -20,15 +20,73 @@ import { generateColorScheme } from "./colors";
 /**
  * Creates tooltip content for income chart segments with highlighting for hovered groups
  */
-function createIncomeTooltipContent(allPostings: Posting[], isPositiveSegment: boolean): string {
-  return createTooltipContent(allPostings, {
-    getAmount: (posting: Posting) => -posting.amount,
-    getLabel: (posting: Posting) => restName(posting.account),
-    filterCondition: (posting: Posting) => {
-      return isPositiveSegment
-        ? -posting.amount > 0 // Income (positive when negated)
-        : -posting.amount < 0; // Expenses (negative when negated)
+function createIncomeTooltipContent(
+  allPostings: Posting[],
+  isPositiveSegment: boolean,
+  date?: dayjs.Dayjs,
+  timeFormat?: string
+): string {
+  const filteredPostings = allPostings.filter((posting) => {
+    return isPositiveSegment
+      ? -posting.amount > 0 // Income (positive when negated)
+      : -posting.amount < 0; // Expenses (negative when negated)
+  });
+
+  // Group by account and calculate totals
+  const groupedByAccount = _.groupBy(filteredPostings, (posting) => restName(posting.account));
+  const tooltipRows = Object.entries(groupedByAccount).map(([account, postings]) => [
+    account,
+    [formatCurrency(_.sumBy(postings, (p) => -p.amount)), "has-text-weight-bold has-text-right"]
+  ]);
+
+  const total = _.sumBy(filteredPostings, (posting) => -posting.amount);
+
+  // Format header based on whether it's daily or monthly view
+  let header: string | undefined;
+  if (date) {
+    if (timeFormat === "DD-MMM") {
+      // Daily mode: show full date
+      header = date.format("DD MMM YYYY");
+    } else {
+      // Monthly mode: show month and year
+      header = date.format("MMM YYYY");
     }
+  }
+
+  return tooltip(tooltipRows, {
+    total: formatCurrency(total),
+    header: header
+  });
+}
+
+/**
+ * Creates tooltip content for net income chart segments
+ */
+function createNetIncomeTooltipContent(
+  allPostings: Posting[],
+  date: dayjs.Dayjs,
+  timeFormat?: string
+): string {
+  // For net income, we have synthetic postings with the net amount
+  const netAmount = _.sumBy(allPostings, (posting) => -posting.amount);
+
+  const tooltipRows = [
+    ["Net Income", [formatCurrency(netAmount), "has-text-weight-bold has-text-right"]]
+  ];
+
+  // Format header based on whether it's daily or monthly view
+  let header: string;
+  if (timeFormat === "DD-MMM") {
+    // Daily mode: show full date
+    header = date.format("DD MMM YYYY");
+  } else {
+    // Monthly mode: show month and year
+    header = date.format("MMM YYYY");
+  }
+
+  return tooltip(tooltipRows, {
+    total: formatCurrency(netAmount),
+    header: header
   });
 }
 
@@ -92,7 +150,7 @@ export function renderDailyInvestmentTimeline(
 
 export function renderMonthlyNetIncomeTimeline(incomes: Income[], taxes: any[]): Legend[] {
   const netIncomes = calculateNetIncomeMonthly(incomes, taxes);
-  return renderIncomeTimeline(netIncomes, "#d3-income-timeline", "MMM-YYYY");
+  return renderIncomeTimeline(netIncomes, "#d3-income-timeline", "MMM-YYYY", true);
 }
 
 export function renderDailyNetIncomeTimeline(
@@ -102,7 +160,7 @@ export function renderDailyNetIncomeTimeline(
   month: number
 ): Legend[] {
   const netIncomes = calculateNetIncomeDaily(incomes, taxes, year, month);
-  return renderIncomeTimeline(netIncomes, "#d3-income-timeline", "DD-MMM");
+  return renderIncomeTimeline(netIncomes, "#d3-income-timeline", "DD-MMM", true);
 }
 
 function transformToDailyData(incomes: Income[], year: number, month: number): Income[] {
@@ -257,7 +315,12 @@ function calculateNetIncomeDaily(
   });
 }
 
-function renderIncomeTimeline(incomes: Income[], id: string, timeFormat: string): Legend[] {
+function renderIncomeTimeline(
+  incomes: Income[],
+  id: string,
+  timeFormat: string,
+  isNetIncome: boolean = false
+): Legend[] {
   const MAX_BAR_WIDTH = 40;
   const svg = d3.select(id),
     margin = { top: 20, right: 30, bottom: 80, left: 40 },
@@ -378,9 +441,14 @@ function renderIncomeTimeline(incomes: Income[], id: string, timeFormat: string)
     .append("rect")
     .attr("data-tippy-content", function (d) {
       const allPostings: Posting[] = (d.data as any).postings;
-      const isPositiveSegment = d[1] > d[0];
+      const date = (d.data as any).date;
 
-      return createIncomeTooltipContent(allPostings, isPositiveSegment);
+      if (isNetIncome) {
+        return createNetIncomeTooltipContent(allPostings, date, timeFormat);
+      } else {
+        const isPositiveSegment = d[1] > d[0];
+        return createIncomeTooltipContent(allPostings, isPositiveSegment, date, timeFormat);
+      }
     })
     .attr("x", function (d) {
       return (
