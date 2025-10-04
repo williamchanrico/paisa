@@ -8,6 +8,8 @@
   import {
     renderMonthlyInvestmentTimeline,
     renderDailyInvestmentTimeline,
+    renderMonthlyNetIncomeTimeline,
+    renderDailyNetIncomeTimeline,
     renderYearlyIncomeTimeline,
     renderYearlyTimelineOf
   } from "$lib/income";
@@ -23,10 +25,18 @@
   let timelineMode: "daily" | "monthly" = "monthly";
   let selectedMonthValue = dayjs().format("YYYY-MM"); // Format for MonthPicker
 
+  // Income display mode state
+  let incomeDisplayMode: "gross" | "net" = "gross";
+
   // Options for BoxedTabs
   const timelineOptions = [
     { label: "Daily", value: "daily" },
     { label: "Monthly", value: "monthly" }
+  ];
+
+  const incomeDisplayOptions = [
+    { label: "Gross", value: "gross" },
+    { label: "Net", value: "net" }
   ];
 
   // Data storage
@@ -74,7 +84,7 @@
     );
   });
 
-  // Reactive statement to update timeline chart when mode or date changes
+  // Reactive statement to update timeline chart when mode, date, or display mode changes
   $: if (incomeData.length > 0) {
     // Clear the SVG before re-rendering to fix update issues
     const svg = document.getElementById("d3-income-timeline");
@@ -82,15 +92,31 @@
       svg.innerHTML = "";
     }
 
-    if (timelineMode === "monthly") {
-      monthlyInvestmentTimelineLegends = renderMonthlyInvestmentTimeline(incomeData);
+    if (incomeDisplayMode === "gross") {
+      // Gross income mode (existing behavior)
+      if (timelineMode === "monthly") {
+        monthlyInvestmentTimelineLegends = renderMonthlyInvestmentTimeline(incomeData);
+      } else {
+        const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
+        monthlyInvestmentTimelineLegends = renderDailyInvestmentTimeline(
+          incomeData,
+          selectedDate.year(),
+          selectedDate.month() + 1
+        );
+      }
     } else {
-      const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
-      monthlyInvestmentTimelineLegends = renderDailyInvestmentTimeline(
-        incomeData,
-        selectedDate.year(),
-        selectedDate.month() + 1
-      );
+      // Net income mode (income - tax)
+      if (timelineMode === "monthly") {
+        monthlyInvestmentTimelineLegends = renderMonthlyNetIncomeTimeline(incomeData, taxData);
+      } else {
+        const selectedDate = dayjs(selectedMonthValue, "YYYY-MM");
+        monthlyInvestmentTimelineLegends = renderDailyNetIncomeTimeline(
+          incomeData,
+          taxData,
+          selectedDate.year(),
+          selectedDate.month() + 1
+        );
+      }
     }
   }
 
@@ -126,10 +152,10 @@
                 <BoxedTabs bind:value={timelineMode} options={timelineOptions} />
               </div>
 
-              <!-- TBD: Future Gross/Net toggle will go here -->
-              <!-- <div class="ml-3">
-                 <GrossNetToggle bind:selectedMode={incomeDisplayMode} />
-               </div> -->
+              <!-- Gross/Net toggle -->
+              <div class="ml-3">
+                <BoxedTabs bind:value={incomeDisplayMode} options={incomeDisplayOptions} />
+              </div>
             </div>
           </div>
 
@@ -138,7 +164,11 @@
         </div>
       </div>
     </div>
-    <BoxLabel text="{timelineMode === 'daily' ? 'Daily' : 'Monthly'} Income Timeline" />
+    <BoxLabel
+      text="{timelineMode === 'daily' ? 'Daily' : 'Monthly'} {incomeDisplayMode === 'gross'
+        ? 'Gross'
+        : 'Net'} Income Timeline"
+    />
   </div>
 </section>
 <section class="section">
