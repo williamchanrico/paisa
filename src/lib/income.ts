@@ -144,13 +144,15 @@ function transformToDailyData(incomes: Income[], year: number, month: number): I
 }
 
 function calculateNetIncomeMonthly(incomes: Income[], taxes: Tax[]): Income[] {
-  // Create a map of tax amounts by month
+  // Create a map of tax amounts by month using actual posting dates
   const taxByMonth = new Map<string, number>();
 
   taxes.forEach((tax) => {
-    const monthKey = dayjs(tax.start_date).format("YYYY-MM");
-    const taxAmount = _.sumBy(tax.postings, (p: Posting) => p.amount);
-    taxByMonth.set(monthKey, (taxByMonth.get(monthKey) || 0) + taxAmount);
+    // Group tax postings by their actual transaction month, not the tax timeline start_date
+    tax.postings.forEach((posting: Posting) => {
+      const monthKey = dayjs(posting.date).format("YYYY-MM");
+      taxByMonth.set(monthKey, (taxByMonth.get(monthKey) || 0) + posting.amount);
+    });
   });
 
   // Calculate net income for each month (income - tax)
