@@ -151,13 +151,15 @@ export function renderMonthlyRepaymentTimelineWithFilter(
               );
               const total = _.sumBy(filteredPostings, (p) => p.amount);
               return tooltip(
-                _.sortBy(
-                  filteredPostings.map((p) => [
-                    _.drop(p.account.split(":")).join(":"),
-                    [formatCurrency(p.amount), "has-text-weight-bold has-text-right"]
-                  ]),
-                  (r) => r[0]
-                ),
+                _.orderBy(
+                  filteredPostings.map((p) => ({
+                    account: _.drop(p.account.split(":")).join(":"),
+                    formatted: [formatCurrency(p.amount), "has-text-weight-bold has-text-right"],
+                    amount: p.amount
+                  })),
+                  "amount",
+                  "desc"
+                ).map((item) => [item.account, item.formatted]),
                 {
                   total: formatCurrency(total),
                   header: date.format("MMM YYYY")
@@ -187,13 +189,15 @@ export function renderMonthlyRepaymentTimelineWithFilter(
               );
               const total = _.sumBy(filteredPostings, (p) => p.amount);
               return tooltip(
-                _.sortBy(
-                  filteredPostings.map((p) => [
-                    _.drop(p.account.split(":")).join(":"),
-                    [formatCurrency(p.amount), "has-text-weight-bold has-text-right"]
-                  ]),
-                  (r) => r[0]
-                ),
+                _.orderBy(
+                  filteredPostings.map((p) => ({
+                    account: _.drop(p.account.split(":")).join(":"),
+                    formatted: [formatCurrency(p.amount), "has-text-weight-bold has-text-right"],
+                    amount: p.amount
+                  })),
+                  "amount",
+                  "desc"
+                ).map((item) => [item.account, item.formatted]),
                 {
                   total: formatCurrency(total),
                   header: date.format("MMM YYYY")
@@ -347,13 +351,15 @@ export function renderMonthlyRepaymentTimeline(postings: Posting[]): Legend[] {
       const date = (d.data as any).date;
       const total = _.sumBy(postings, (p) => p.amount);
       return tooltip(
-        _.sortBy(
-          postings.map((p) => [
-            _.drop(p.account.split(":")).join(":"),
-            [formatCurrency(p.amount), "has-text-weight-bold has-text-right"]
-          ]),
-          (r) => r[0]
-        ),
+        _.orderBy(
+          postings.map((p) => ({
+            account: _.drop(p.account.split(":")).join(":"),
+            formatted: [formatCurrency(p.amount), "has-text-weight-bold has-text-right"],
+            amount: p.amount
+          })),
+          "amount",
+          "desc"
+        ).map((item) => [item.account, item.formatted]),
         {
           total: formatCurrency(total),
           header: date.format("MMM YYYY")

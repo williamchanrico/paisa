@@ -161,7 +161,7 @@
             <strong>Oops!</strong> You have no expenses.
           </ZeroState>
 
-          <LegendCard {legends} clazz="ml-4" />
+          <LegendCard {legends} clazz="ml-4 overflow-x-auto" />
           <svg id="d3-yearly-expense-timeline" width="100%" height="500" />
         </div>
       </div>
