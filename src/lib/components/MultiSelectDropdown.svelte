@@ -193,27 +193,42 @@
 
   /* Dark theme support */
   :global(html[data-theme="dark"]) .checkbox-item:hover {
-    background-color: #4a4a4a;
+    background-color: #2a2a2a;
   }
 
   :global(html[data-theme="dark"]) .dropdown-content {
-    background-color: #363636;
+    background-color: #1a1a1a;
     color: #f5f5f5;
+    border: 1px solid #333;
+  }
+
+  :global(html[data-theme="dark"]) .dropdown-menu {
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.4);
   }
 
   :global(html[data-theme="dark"]) .input {
-    background-color: #4a4a4a;
-    border-color: #5a5a5a;
+    background-color: #2a2a2a;
+    border-color: #444;
     color: #f5f5f5;
   }
 
+  :global(html[data-theme="dark"]) .input:focus {
+    border-color: #3273dc;
+    box-shadow: 0 0 0 0.125em rgba(50, 115, 220, 0.25);
+  }
+
   :global(html[data-theme="dark"]) .button.is-light {
-    background-color: #4a4a4a;
-    border-color: #5a5a5a;
+    background-color: #2a2a2a;
+    border-color: #444;
     color: #f5f5f5;
   }
 
   :global(html[data-theme="dark"]) .button.is-light:hover {
-    background-color: #5a5a5a;
+    background-color: #333;
+    border-color: #555;
+  }
+
+  :global(html[data-theme="dark"]) .dropdown-divider {
+    background-color: #444;
   }
 </style>
