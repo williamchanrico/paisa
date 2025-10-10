@@ -34,10 +34,72 @@ function createIncomeTooltipContent(
 
   // Group by account and calculate totals
   const groupedByAccount = _.groupBy(filteredPostings, (posting) => restName(posting.account));
-  const tooltipRows = Object.entries(groupedByAccount).map(([account, postings]) => [
-    account,
-    [formatCurrency(_.sumBy(postings, (p) => -p.amount)), "has-text-weight-bold has-text-right"]
-  ]);
+  const tooltipRows = _.orderBy(
+    Object.entries(groupedByAccount).map(([account, postings]) => ({
+      account,
+      formatted: [
+        formatCurrency(_.sumBy(postings, (p) => -p.amount)),
+        "has-text-weight-bold has-text-right"
+      ],
+      amount: _.sumBy(postings, (p) => -p.amount)
+    })),
+    "amount",
+    "desc"
+  ).map((item) => [item.account, item.formatted]);
+
+  const total = _.sumBy(filteredPostings, (posting) => -posting.amount);
+
+  // Format header based on whether it's daily or monthly view
+  let header: string | undefined;
+  if (date) {
+    if (timeFormat === "DD-MMM") {
+      // Daily mode: show full date
+      header = date.format("DD MMM YYYY");
+    } else {
+      // Monthly mode: show month and year
+      header = date.format("MMM YYYY");
+    }
+  }
+
+  return tooltip(tooltipRows, {
+    total: formatCurrency(total),
+    header: header
+  });
+}
+
+/**
+ * Creates filtered tooltip content for income chart segments with only selected groups
+ */
+function createFilteredIncomeTooltipContent(
+  allPostings: Posting[],
+  isPositiveSegment: boolean,
+  allowedGroups: string[],
+  date?: dayjs.Dayjs,
+  timeFormat?: string
+): string {
+  const filteredPostings = allPostings.filter((posting) => {
+    const group = incomeGroup(posting);
+    const amountFilter = isPositiveSegment
+      ? -posting.amount > 0 // Income (positive when negated)
+      : -posting.amount < 0; // Expenses (negative when negated)
+
+    return amountFilter && allowedGroups.includes(group);
+  });
+
+  // Group by account and calculate totals
+  const groupedByAccount = _.groupBy(filteredPostings, (posting) => restName(posting.account));
+  const tooltipRows = _.orderBy(
+    Object.entries(groupedByAccount).map(([account, postings]) => ({
+      account,
+      formatted: [
+        formatCurrency(_.sumBy(postings, (p) => -p.amount)),
+        "has-text-weight-bold has-text-right"
+      ],
+      amount: _.sumBy(postings, (p) => -p.amount)
+    })),
+    "amount",
+    "desc"
+  ).map((item) => [item.account, item.formatted]);
 
   const total = _.sumBy(filteredPostings, (posting) => -posting.amount);
 
@@ -69,6 +131,44 @@ function createNetIncomeTooltipContent(
 ): string {
   // For net income, we have synthetic postings with the net amount
   const netAmount = _.sumBy(allPostings, (posting) => -posting.amount);
+
+  const tooltipRows = [
+    ["Net Income", [formatCurrency(netAmount), "has-text-weight-bold has-text-right"]]
+  ];
+
+  // Format header based on whether it's daily or monthly view
+  let header: string;
+  if (timeFormat === "DD-MMM") {
+    // Daily mode: show full date
+    header = date.format("DD MMM YYYY");
+  } else {
+    // Monthly mode: show month and year
+    header = date.format("MMM YYYY");
+  }
+
+  return tooltip(tooltipRows, {
+    total: formatCurrency(netAmount),
+    header: header
+  });
+}
+
+/**
+ * Creates filtered tooltip content for net income chart segments with only selected groups
+ */
+function createFilteredNetIncomeTooltipContent(
+  allPostings: Posting[],
+  allowedGroups: string[],
+  date: dayjs.Dayjs,
+  timeFormat?: string
+): string {
+  // Filter postings to only include allowed groups
+  const filteredPostings = allPostings.filter((posting) => {
+    const group = incomeGroup(posting);
+    return allowedGroups.includes(group);
+  });
+
+  // For net income, we have synthetic postings with the net amount
+  const netAmount = _.sumBy(filteredPostings, (posting) => -posting.amount);
 
   const tooltipRows = [
     ["Net Income", [formatCurrency(netAmount), "has-text-weight-bold has-text-right"]]
@@ -531,10 +631,21 @@ function renderIncomeTimelineWithFilter(
               const date = (d.data as any).date;
 
               if (isNetIncome) {
-                return createNetIncomeTooltipContent(allPostings, date, timeFormat);
+                return createFilteredNetIncomeTooltipContent(
+                  allPostings,
+                  allowedGroups,
+                  date,
+                  timeFormat
+                );
               } else {
                 const isPositiveSegment = d[1] > d[0];
-                return createIncomeTooltipContent(allPostings, isPositiveSegment, date, timeFormat);
+                return createFilteredIncomeTooltipContent(
+                  allPostings,
+                  isPositiveSegment,
+                  allowedGroups,
+                  date,
+                  timeFormat
+                );
               }
             })
             .attr("x", function (d) {
@@ -557,10 +668,21 @@ function renderIncomeTimelineWithFilter(
               const date = (d.data as any).date;
 
               if (isNetIncome) {
-                return createNetIncomeTooltipContent(allPostings, date, timeFormat);
+                return createFilteredNetIncomeTooltipContent(
+                  allPostings,
+                  allowedGroups,
+                  date,
+                  timeFormat
+                );
               } else {
                 const isPositiveSegment = d[1] > d[0];
-                return createIncomeTooltipContent(allPostings, isPositiveSegment, date, timeFormat);
+                return createFilteredIncomeTooltipContent(
+                  allPostings,
+                  isPositiveSegment,
+                  allowedGroups,
+                  date,
+                  timeFormat
+                );
               }
             })
             .transition(t)
