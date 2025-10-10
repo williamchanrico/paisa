@@ -7,10 +7,94 @@
   let breakdowns: Record<string, AssetBreakdown> = {};
   let hideEmptyMarketValue = false;
 
-  // Filter breakdowns based on checkbox state
+  // Filter breakdowns based on checkbox state and recalculate parent totals
   $: filteredBreakdowns = hideEmptyMarketValue
-    ? _.pickBy(breakdowns, (breakdown) => breakdown.marketAmount !== 0)
+    ? recalculateParentTotals(_.pickBy(breakdowns, (breakdown) => breakdown.marketAmount !== 0))
     : breakdowns;
+
+  // Function to recalculate parent totals based on visible children
+  function recalculateParentTotals(
+    filteredData: Record<string, AssetBreakdown>
+  ): Record<string, AssetBreakdown> {
+    const result = { ...filteredData };
+
+    // Get all unique parent paths from the filtered data
+    const allPaths = Object.keys(result);
+    const parentPaths = new Set<string>();
+
+    // Collect all possible parent paths
+    for (const path of allPaths) {
+      const parts = path.split(":");
+      for (let i = 1; i < parts.length; i++) {
+        parentPaths.add(parts.slice(0, i).join(":"));
+      }
+    }
+
+    // Sort parent paths by depth (deepest first) to process bottom-up
+    const sortedParentPaths = Array.from(parentPaths).sort(
+      (a, b) => b.split(":").length - a.split(":").length
+    );
+
+    // Process each parent path from deepest to shallowest
+    for (const parentPath of sortedParentPaths) {
+      // Find all direct children of this parent (both leaf nodes and intermediate parents)
+      const directChildren = Object.keys(result).filter((path) => {
+        const pathParts = path.split(":");
+        const parentParts = parentPath.split(":");
+
+        // Check if this path is a direct child (one level deeper)
+        return pathParts.length === parentParts.length + 1 && path.startsWith(parentPath + ":");
+      });
+
+      if (directChildren.length > 0) {
+        // Calculate totals from all direct children
+        const parentTotals = directChildren.reduce(
+          (totals, childPath) => {
+            const child = result[childPath];
+            return {
+              investmentAmount: totals.investmentAmount + child.investmentAmount,
+              withdrawalAmount: totals.withdrawalAmount + child.withdrawalAmount,
+              balanceUnits: totals.balanceUnits + child.balanceUnits,
+              marketAmount: totals.marketAmount + child.marketAmount,
+              gainAmount: totals.gainAmount + child.gainAmount
+            };
+          },
+          {
+            investmentAmount: 0,
+            withdrawalAmount: 0,
+            balanceUnits: 0,
+            marketAmount: 0,
+            gainAmount: 0
+          }
+        );
+
+        // Create or update parent entry with recalculated totals
+        result[parentPath] = {
+          group: parentPath,
+          investmentAmount: parentTotals.investmentAmount,
+          withdrawalAmount: parentTotals.withdrawalAmount,
+          balanceUnits: parentTotals.balanceUnits,
+          marketAmount: parentTotals.marketAmount,
+          gainAmount: parentTotals.gainAmount,
+          // Calculate derived values
+          xirr:
+            parentTotals.investmentAmount > 0
+              ? (parentTotals.gainAmount / parentTotals.investmentAmount) * 100
+              : 0,
+          absoluteReturn:
+            parentTotals.investmentAmount > 0
+              ? ((parentTotals.marketAmount -
+                  parentTotals.investmentAmount +
+                  parentTotals.withdrawalAmount) /
+                  parentTotals.investmentAmount) *
+                100
+              : 0
+        };
+      }
+    }
+
+    return result;
+  }
 
   onMount(async () => {
     ({ asset_breakdowns: breakdowns } = await ajax("/api/assets/balance"));
