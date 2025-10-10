@@ -110,7 +110,7 @@
           <div class="action-buttons mb-4">
             <div class="is-flex is-align-items-center is-justify-content-flex-start pr-3 pl-3">
               <!-- Hide empty checkbox -->
-              <div class="field">
+              <div class="field is-flex is-align-items-center">
                 <label class="checkbox modern-checkbox">
                   <input type="checkbox" bind:checked={hideEmptyMarketValue} />
                   <span class="checkmark"></span>
@@ -146,6 +146,13 @@
     cursor: pointer;
     font-size: 0.9rem;
     user-select: none;
+    height: 32px;
+    margin-bottom: 0;
+  }
+
+  /* Ensure field containers don't have default margins */
+  .field {
+    margin-bottom: 0;
   }
 
   .modern-checkbox input[type="checkbox"] {
