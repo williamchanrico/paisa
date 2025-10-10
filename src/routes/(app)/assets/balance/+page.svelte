@@ -1,16 +1,103 @@
 <script lang="ts">
   import AssetsBalance from "$lib/components/AssetsBalance.svelte";
+  import MultiSelectDropdown from "$lib/components/MultiSelectDropdown.svelte";
   import { ajax, type AssetBreakdown } from "$lib/utils";
   import _ from "lodash";
   import { onMount } from "svelte";
 
   let breakdowns: Record<string, AssetBreakdown> = {};
   let hideEmptyMarketValue = false;
+  let selectedAccounts: Set<string> = new Set();
+  let leafAccounts: string[] = [];
 
-  // Filter breakdowns based on checkbox state and recalculate parent totals
-  $: filteredBreakdowns = hideEmptyMarketValue
-    ? recalculateParentTotals(_.pickBy(breakdowns, (breakdown) => breakdown.marketAmount !== 0))
-    : breakdowns;
+  // Extract leaf accounts when breakdowns change
+  $: {
+    if (breakdowns) {
+      leafAccounts = extractLeafAccounts(breakdowns);
+      // Initialize selectedAccounts with all leaf accounts if empty
+      if (selectedAccounts.size === 0) {
+        selectedAccounts = new Set(leafAccounts);
+      }
+    }
+  }
+
+  // Filter breakdowns based on checkbox state and account selection
+  $: filteredBreakdowns = applyFilters(breakdowns, hideEmptyMarketValue, selectedAccounts);
+
+  // Extract leaf accounts (accounts that don't have children)
+  function extractLeafAccounts(data: Record<string, AssetBreakdown>): string[] {
+    const allAccounts = Object.keys(data);
+    const leafAccounts: string[] = [];
+
+    for (const account of allAccounts) {
+      // Check if this account has any children
+      const hasChildren = allAccounts.some(
+        (otherAccount) => otherAccount !== account && otherAccount.startsWith(account + ":")
+      );
+
+      if (!hasChildren) {
+        leafAccounts.push(account);
+      }
+    }
+
+    return leafAccounts.sort();
+  }
+
+  // Apply all filters: empty market value and account selection
+  function applyFilters(
+    data: Record<string, AssetBreakdown>,
+    hideEmpty: boolean,
+    selectedLeafAccounts: Set<string>
+  ): Record<string, AssetBreakdown> {
+    let filtered = { ...data };
+
+    // First apply empty market value filter if enabled
+    if (hideEmpty) {
+      filtered = _.pickBy(filtered, (breakdown) => breakdown.marketAmount !== 0);
+    }
+
+    // Then apply account selection filter
+    filtered = applyAccountSelectionFilter(filtered, selectedLeafAccounts);
+
+    // Finally recalculate parent totals
+    return recalculateParentTotals(filtered);
+  }
+
+  // Filter based on selected accounts and hide parents when all children are hidden
+  function applyAccountSelectionFilter(
+    data: Record<string, AssetBreakdown>,
+    selectedLeafAccounts: Set<string>
+  ): Record<string, AssetBreakdown> {
+    const result: Record<string, AssetBreakdown> = {};
+
+    // First, include all selected leaf accounts
+    for (const account of Object.keys(data)) {
+      if (selectedLeafAccounts.has(account)) {
+        result[account] = data[account];
+      }
+    }
+
+    // Then, include parent accounts only if they have at least one visible child
+    for (const account of Object.keys(data)) {
+      if (!selectedLeafAccounts.has(account)) {
+        // This is a parent account, check if it has any visible children
+        const hasVisibleChildren = Object.keys(result).some((visibleAccount) =>
+          visibleAccount.startsWith(account + ":")
+        );
+
+        if (hasVisibleChildren) {
+          result[account] = data[account];
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // Handle account selection change
+  function handleAccountSelectionChange(event: CustomEvent<{ selectedItems: Set<string> }>) {
+    selectedAccounts = event.detail.selectedItems;
+  }
 
   // Function to recalculate parent totals based on visible children
   function recalculateParentTotals(
@@ -110,12 +197,22 @@
           <div class="action-buttons mb-4">
             <div class="is-flex is-align-items-center is-justify-content-flex-start pr-3 pl-3">
               <!-- Hide empty checkbox -->
-              <div class="field is-flex is-align-items-center">
+              <div class="field mr-4 is-flex is-align-items-center">
                 <label class="checkbox modern-checkbox">
                   <input type="checkbox" bind:checked={hideEmptyMarketValue} />
                   <span class="checkmark"></span>
                   Hide empty
                 </label>
+              </div>
+
+              <!-- Account filter dropdown -->
+              <div class="field is-flex is-align-items-center">
+                <MultiSelectDropdown
+                  options={leafAccounts}
+                  bind:selectedItems={selectedAccounts}
+                  placeholder="Filter accounts..."
+                  on:change={handleAccountSelectionChange}
+                />
               </div>
             </div>
           </div>
