@@ -188,11 +188,10 @@
               : 0,
           absoluteReturn:
             parentTotals.investmentAmount > 0
-              ? ((parentTotals.marketAmount -
+              ? (parentTotals.marketAmount -
                   parentTotals.investmentAmount +
                   parentTotals.withdrawalAmount) /
-                  parentTotals.investmentAmount) *
-                100
+                parentTotals.investmentAmount
               : 0
         };
       }
