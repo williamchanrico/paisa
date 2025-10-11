@@ -9,11 +9,18 @@
   let hideEmptyMarketValue = false;
   let selectedAccounts: Set<string> = new Set();
   let leafAccounts: string[] = [];
+  let nonEmptyAccounts: Set<string> = new Set();
 
-  // Extract leaf accounts when breakdowns change
+  // Extract leaf accounts and pre-compute non-empty accounts when breakdowns change
   $: {
     if (breakdowns) {
       leafAccounts = extractLeafAccounts(breakdowns);
+      // Pre-compute non-empty accounts for fast filtering
+      nonEmptyAccounts = new Set(
+        Object.entries(breakdowns)
+          .filter(([_, breakdown]) => breakdown.marketAmount !== 0)
+          .map(([account, _]) => account)
+      );
       // Initialize selectedAccounts with all leaf accounts if empty
       if (selectedAccounts.size === 0) {
         selectedAccounts = new Set(leafAccounts);
@@ -51,9 +58,15 @@
   ): Record<string, AssetBreakdown> {
     let filtered = { ...data };
 
-    // First apply empty market value filter if enabled
+    // First apply empty market value filter if enabled (optimized with pre-computed Set)
     if (hideEmpty) {
-      filtered = _.pickBy(filtered, (breakdown) => breakdown.marketAmount !== 0);
+      const result: Record<string, AssetBreakdown> = {};
+      for (const account of Object.keys(filtered)) {
+        if (nonEmptyAccounts.has(account)) {
+          result[account] = filtered[account];
+        }
+      }
+      filtered = result;
     }
 
     // Then apply account selection filter
@@ -69,20 +82,25 @@
     selectedLeafAccounts: Set<string>
   ): Record<string, AssetBreakdown> {
     const result: Record<string, AssetBreakdown> = {};
+    const dataKeys = Object.keys(data);
 
-    // First, include all selected leaf accounts
-    for (const account of Object.keys(data)) {
-      if (selectedLeafAccounts.has(account)) {
+    // First, include all selected leaf accounts (optimized iteration)
+    for (const account of selectedLeafAccounts) {
+      if (data[account]) {
         result[account] = data[account];
       }
     }
 
+    // Pre-compute visible account keys for faster parent checking
+    const visibleAccountKeys = Object.keys(result);
+
     // Then, include parent accounts only if they have at least one visible child
-    for (const account of Object.keys(data)) {
+    for (const account of dataKeys) {
       if (!selectedLeafAccounts.has(account)) {
-        // This is a parent account, check if it has any visible children
-        const hasVisibleChildren = Object.keys(result).some((visibleAccount) =>
-          visibleAccount.startsWith(account + ":")
+        // This is a parent account, check if it has any visible children (optimized)
+        const accountPrefix = account + ":";
+        const hasVisibleChildren = visibleAccountKeys.some((visibleAccount) =>
+          visibleAccount.startsWith(accountPrefix)
         );
 
         if (hasVisibleChildren) {
